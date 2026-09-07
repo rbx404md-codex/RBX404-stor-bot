@@ -19,7 +19,6 @@ jobs:
 
       - name: Find ZIP
         id: zip
-        shell: bash
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
 
@@ -28,68 +27,54 @@ jobs:
             exit 1
           fi
 
-          echo "✅ Found ZIP: $ZIP_FILE"
+          echo "✅ Found: $ZIP_FILE"
           echo "zip_file=$ZIP_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Extract ZIP
-        shell: bash
         run: |
           rm -rf extracted
           mkdir extracted
 
           unzip -o "${{ steps.zip.outputs.zip_file }}" -d extracted
 
-          echo "===== EXTRACTED CONTENT ====="
-          find extracted -maxdepth 3 -type f \
-            ! -path "*/.git/*" | head -100
+          echo "✅ ZIP extracted"
 
-      - name: Copy project
-        shell: bash
+      - name: Copy project files
         run: |
           PROJECT_DIR="extracted/RBX404-Digital-Store-Bot"
 
           if [ ! -d "$PROJECT_DIR" ]; then
             echo "❌ Project folder not found!"
-            echo "Available folders:"
             find extracted -maxdepth 2 -type d
             exit 1
           fi
 
           echo "📦 Copying project files..."
 
-          cp -a "$PROJECT_DIR"/. . \
-            --no-preserve=ownership
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            "$PROJECT_DIR/" ./
 
-          echo "🧹 Removing ZIP's Git metadata..."
-
-          rm -rf .git/modules
-          
-          echo "✅ Project copied."
+          echo "✅ Project files copied successfully."
 
       - name: Remove ZIP
-        shell: bash
         run: |
           rm -f "${{ steps.zip.outputs.zip_file }}"
 
-      - name: Verify Git repository
-        shell: bash
+      - name: Verify
         run: |
-          if [ ! -d ".git" ]; then
-            echo "⚠️ Git metadata missing. Reinitializing..."
+          echo "===== PROJECT FILES ====="
+          find . -maxdepth 3 \
+            -not -path "./.git/*" \
+            -not -path "./.github/*" \
+            -type f | sort | head -200
 
-            git init
-            git remote add origin \
-              "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
-
-            git fetch origin main
-            git checkout -B main origin/main
-          fi
-
-          echo "✅ Git repository verified."
+          echo ""
+          echo "===== GIT STATUS ====="
           git status
 
       - name: Commit and Push
-        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
