@@ -14,29 +14,53 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Find ZIP file
+        id: zip
+        run: |
+          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found!"
+            exit 1
+          fi
+
+          echo "Found ZIP: $ZIP_FILE"
+          echo "zip_file=$ZIP_FILE" >> "$GITHUB_OUTPUT"
+
       - name: Extract ZIP
         run: |
-          mkdir -p extracted
-          unzip -o "RBX404-Digital-Store-Bot.zip" -d extracted
+          ZIP_FILE="${{ steps.zip.outputs.zip_file }}"
 
-      - name: Move files to repository root
+          rm -rf extracted
+          mkdir extracted
+
+          unzip -o "$ZIP_FILE" -d extracted
+
+          echo "=== Extracted files ==="
+          find extracted -maxdepth 3 -type f | head -100
+
+      - name: Move files to root
         run: |
-          shopt -s dotglob
+          shopt -s dotglob nullglob
 
-          if [ "$(find extracted -mindepth 1 -maxdepth 1 | wc -l)" -eq 1 ] && \
-             [ -d "$(find extracted -mindepth 1 -maxdepth 1 -type d | head -1)" ]; then
-            INNER_DIR="$(find extracted -mindepth 1 -maxdepth 1 -type d | head -1)"
-            cp -r "$INNER_DIR"/* . 2>/dev/null || true
-            cp -r "$INNER_DIR"/.[!.]* . 2>/dev/null || true
+          # If ZIP contains one main folder, use its contents
+          ITEMS=(extracted/*)
+
+          if [ "${#ITEMS[@]}" -eq 1 ] && [ -d "${ITEMS[0]}" ]; then
+            echo "Single root folder detected: ${ITEMS[0]}"
+            cp -a "${ITEMS[0]}"/. .
           else
-            cp -r extracted/* . 2>/dev/null || true
-            cp -r extracted/.[!.]* . 2>/dev/null || true
+            echo "Multiple root items detected"
+            cp -a extracted/. .
           fi
 
           rm -rf extracted
-          rm -f "RBX404-Digital-Store-Bot.zip"
 
-      - name: Commit extracted files
+      - name: Remove ZIP
+        run: |
+          rm -f "${{ steps.zip.outputs.zip_file }}"
+
+      - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -46,6 +70,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "Extract RBX404 Digital Store Bot"
+            git commit -m "Extract project ZIP"
             git push
           fi
