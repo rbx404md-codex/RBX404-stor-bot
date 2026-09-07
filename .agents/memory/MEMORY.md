@@ -1,0 +1,1 @@
+- [Python package installation](python-package-install.md) — unpinned direct dependencies may be required when the workspace rejects exact pins.
