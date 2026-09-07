@@ -13,54 +13,71 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Find ZIP file
+      - name: Find ZIP
         id: zip
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No ZIP file found!"
+            echo "❌ No ZIP file found!"
             exit 1
           fi
 
-          echo "Found ZIP: $ZIP_FILE"
+          echo "✅ ZIP found: $ZIP_FILE"
           echo "zip_file=$ZIP_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Extract ZIP
         run: |
-          ZIP_FILE="${{ steps.zip.outputs.zip_file }}"
-
           rm -rf extracted
           mkdir extracted
 
-          unzip -o "$ZIP_FILE" -d extracted
+          unzip -o "${{ steps.zip.outputs.zip_file }}" -d extracted
 
-          echo "=== Extracted files ==="
-          find extracted -maxdepth 3 -type f | head -100
+          echo "===== ZIP CONTENT ====="
+          find extracted -maxdepth 3 -type f \
+            ! -path "*/.git/*" | head -100
 
-      - name: Move files to root
+      - name: Copy project files
         run: |
           shopt -s dotglob nullglob
 
-          # If ZIP contains one main folder, use its contents
-          ITEMS=(extracted/*)
+          ROOT="extracted/RBX404-Digital-Store-Bot"
 
-          if [ "${#ITEMS[@]}" -eq 1 ] && [ -d "${ITEMS[0]}" ]; then
-            echo "Single root folder detected: ${ITEMS[0]}"
-            cp -a "${ITEMS[0]}"/. .
-          else
-            echo "Multiple root items detected"
-            cp -a extracted/. .
+          if [ ! -d "$ROOT" ]; then
+            echo "❌ Project folder not found!"
+            find extracted -maxdepth 2 -type d
+            exit 1
           fi
 
-          rm -rf extracted
+          echo "📦 Copying project files..."
 
-      - name: Remove ZIP
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            "$ROOT/" ./
+
+          echo "✅ Project files copied."
+
+      - name: Remove ZIP and unwanted Git files
         run: |
           rm -f "${{ steps.zip.outputs.zip_file }}"
+          rm -rf .git/modules
+          rm -rf .git/objects
+          
+          echo "Cleanup completed."
 
-      - name: Commit changes
+      - name: Show final structure
+        run: |
+          echo "===== FINAL PROJECT ====="
+          find . -maxdepth 3 \
+            -not -path "./.git/*" \
+            -not -path "./.github/*" \
+            -type f | sort | head -200
+
+      - name: Commit and Push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -68,8 +85,10 @@ jobs:
           git add -A
 
           if git diff --cached --quiet; then
-            echo "No changes to commit."
-          else
-            git commit -m "Extract project ZIP"
-            git push
+            echo "ℹ️ No changes to commit."
+            exit 0
           fi
+
+          git commit -m "Extract RBX404 Digital Store Bot"
+
+          git push origin HEAD:main
